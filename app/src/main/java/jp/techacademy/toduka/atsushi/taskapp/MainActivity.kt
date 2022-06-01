@@ -10,21 +10,14 @@ import android.content.Intent
 import androidx.appcompat.app.AlertDialog
 import android.app.AlarmManager
 import android.app.PendingIntent
-import android.view.View
 
 const val EXTRA_TASK = "jp.techacademy.toduka.atsushi.taskapp.TASK"
 
-class MainActivity : AppCompatActivity(), View.OnClickListener  {
+class MainActivity : AppCompatActivity() {
     private lateinit var mRealm: Realm
     private val mRealmListener = object : RealmChangeListener<Realm> {
         override fun onChange(element: Realm) {
-            kensaku_button.setOnClickListener(this)
-            //reloadListView()
-        }
-        override fun onClick(v: View) {
-            if (v.id == R.id.kensaku_button) {
-                textView.text = editText.text.toString()
-            }
+            reloadListView()
         }
     }
 
@@ -33,96 +26,101 @@ class MainActivity : AppCompatActivity(), View.OnClickListener  {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        kensaku_button.setOnClickListener {
-            // EditTextの文字列をTextViewに設定
-            textView.text = editText.text.toString()
 
-
-            fab.setOnClickListener { view ->
-                val intent = Intent(this, InputActivity::class.java)
-                startActivity(intent)
-            }
-
-            // Realmの設定
-            mRealm = Realm.getDefaultInstance()
-            mRealm.addChangeListener(mRealmListener)
-
-            // ListViewの設定
-            mTaskAdapter = TaskAdapter(this)
-
-            // ListViewをタップしたときの処理
-            listView1.setOnItemClickListener { parent, _, position, _ ->
-                // 入力・編集する画面に遷移させる
-                val task = parent.adapter.getItem(position) as Task
-                val intent = Intent(this, InputActivity::class.java)
-                intent.putExtra(EXTRA_TASK, task.id)
-                startActivity(intent)
-            }
-
-            // ListViewを長押ししたときの処理
-            listView1.setOnItemLongClickListener { parent, _, position, _ ->
-                // タスクを削除する
-                val task = parent.adapter.getItem(position) as Task
-
-                // ダイアログを表示する
-                val builder = AlertDialog.Builder(this)
-
-                builder.setTitle("削除")
-                builder.setMessage(task.title + "を削除しますか")
-
-                builder.setPositiveButton("OK") { _, _ ->
-                    val results = mRealm.where(Task::class.java).equalTo("id", task.id).findAll()
-
-                    mRealm.beginTransaction()
-                    results.deleteAllFromRealm()
-                    mRealm.commitTransaction()
-                    val resultIntent = Intent(applicationContext, TaskAlarmReceiver::class.java)
-                    val resultPendingIntent = PendingIntent.getBroadcast(
-                        this,
-                        task.id,
-                        resultIntent,
-                        PendingIntent.FLAG_UPDATE_CURRENT
-                    )
-
-                    val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
-                    alarmManager.cancel(resultPendingIntent)
-                    reloadListView()
-                }
-
-                builder.setNegativeButton("CANCEL", null)
-
-                val dialog = builder.create()
-                dialog.show()
-
-                true
-            }
-
-            reloadListView()
+        fab.setOnClickListener { view ->
+            val intent = Intent(this@MainActivity, InputActivity::class.java);
+            startActivity(intent);
         }
 
-        private fun reloadListView() {
-            // Realmデータベースから、「すべてのデータを取得して新しい日時順に並べた結果」を取得
-            val taskRealmResults =
+        // Realmの設定
+        mRealm = Realm.getDefaultInstance()
+        mRealm.addChangeListener(mRealmListener)
+
+        // ListViewの設定
+        mTaskAdapter = TaskAdapter(this@MainActivity)
+
+        // ListViewをタップしたときの処理
+        listView1.setOnItemClickListener { parent, _, position, _ ->
+            // 入力・編集する画面に遷移させる
+            val task = parent.adapter.getItem(position) as Task
+            val intent = Intent(this@MainActivity, InputActivity::class.java)
+            intent.putExtra(EXTRA_TASK, task.id)
+            startActivity(intent)
+        }
+
+        // ListViewを長押ししたときの処理
+        listView1.setOnItemLongClickListener { parent, _, position, _ ->
+            // タスクを削除する
+            val task = parent.adapter.getItem(position) as Task
+
+            // ダイアログを表示する
+            val builder = AlertDialog.Builder(this@MainActivity)
+
+            builder.setTitle("削除")
+            builder.setMessage(task.title + "を削除しますか")
+
+            builder.setPositiveButton("OK"){_, _ ->
+                val results = mRealm.where(Task::class.java).equalTo("id", task.id).findAll()
+
+                mRealm.beginTransaction()
+                results.deleteAllFromRealm()
+                mRealm.commitTransaction()
+
+                val resultIntent = Intent(applicationContext, TaskAlarmReceiver::class.java)
+                val resultPendingIntent = PendingIntent.getBroadcast(
+                    this@MainActivity,
+                    task.id,
+                    resultIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                )
+
+                val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+                alarmManager.cancel(resultPendingIntent);
+
+                reloadListView()
+            }
+
+            builder.setNegativeButton("CANCEL", null)
+
+            val dialog = builder.create()
+            dialog.show()
+
+            true
+        }
+
+        // 課題提出
+        searchButton.setOnClickListener { _ ->
+            reloadListView(true)
+        }
+
+        reloadListView()
+    }
+
+    private fun reloadListView(searchFlg: Boolean = false) {
+        // 課題対応
+        val searchString = searchEditText.text.toString()
+        val taskRealmResults =
+            if(searchString.isNotEmpty()){
+                // カテゴリー文字列に一致するタスク。beginsWithは前方一致。equalTo完全一致でもよい
+                mRealm.where(Task::class.java).beginsWith("category", searchString).findAll().sort("date", Sort.DESCENDING)
+            } else {
+                // Realmデータベースから、「全てのデータを取得して新しい日時順に並べた結果」を取得
                 mRealm.where(Task::class.java).findAll().sort("date", Sort.DESCENDING)
+            }
 
-            // 上記の結果を、TaskListとしてセットする
-            mTaskAdapter.mTaskList = mRealm.copyFromRealm(taskRealmResults)
+        // 上記の結果を、TaskList としてセットする
+       // mTaskAdapter.taskList = mRealm.copyFromRealm(taskRealmResults)
 
-            // TaskのListView用のアダプタに渡す
-            listView1.adapter = mTaskAdapter
+        // TaskのListView用のアダプタに渡す
+        listView1.adapter = mTaskAdapter
 
-            // 表示を更新するために、アダプターにデータが変更されたことを知らせる
-            mTaskAdapter.notifyDataSetChanged()
-        }
+        // 表示を更新するために、アダプターにデータが変更されたことを知らせる
+        mTaskAdapter.notifyDataSetChanged()
+    }
 
-        private fun KenSakuListView() {
-            val taskRealmResults =
-               mRealm.where(Task::class.java).findAll().sort("date", Sort.DESCENDING)
-        }
-        override fun onDestroy() {
-            super.onDestroy()
+    override fun onDestroy() {
+        super.onDestroy()
 
-            mRealm.close()
-        }
+        mRealm.close()
     }
 }
